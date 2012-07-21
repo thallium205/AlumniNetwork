@@ -25,7 +25,7 @@ app.get('/', function(req, res){
 // Load database
 app.get('/load/:id', function(req, res)
 {	
-	if (req.params.id === 'apple123')
+	if (req.params.id === 'apple123') // Use pw file for production
 	{
 		fs.readFile('alumni.csv', 'utf8', function(err, data) 
 		{
@@ -56,136 +56,35 @@ app.get('/load/:id', function(req, res)
 			var years = {};
 			for (var i = 0; i < people.length; i++)
 			{				
-				years[people[i]] = people[i].year;
-			}			
-			
-			
-			// DEBUGGING
-			console.log("Begin test");
-			db.getServices(function(err, result)
+				years[people[i].year] = people[i].year;
+			}	
+
+			// Sort the years
+			var sortedYears = [];
+			for (var year in years)
+			{
+				sortedYears.push(years[year]);
+			}
+			sortedYears.sort();	
+			years = sortedYears;
+
+			addAllyears(years, function(err)
 			{
 				if (err)
 				{
 					return console.log(err);
 				}
-				console.log(result);
-			});
-			
-			
-			// Add class years to database if they don't exist
-			for (var year in years)
-			{			
-				console.log("Processing year: " + years[year]);
-				db.getIndexedNodes('years', 'year', years[year].toString(), function(err, result)
+				
+				addAllPeople(people, function(err)
 				{
 					if (err)
 					{
 						return console.log(err);
 					}
 					
-					if (result === null)
-					{
-						// It doesn't exist.  Add the year to the database
-						console.log("IT DOESNT EXIST LOLOL");
-						var node = db.createNode({'year': years[year]});
-						node.save(function callback(err, result)
-						{
-							if (err)
-							{
-								return console.log(err);
-							}
-							
-							// Create relationship from class to class
-							if (years[year] === 1991)
-							{
-								// This is the first class, so add a relationship to the reference node
-								db.getNodeById(0, function(err, result)
-								{
-									if (err)
-									{
-										return console.log(err);
-									}
-									
-									result.createRelationshipTo(node, 'follows', function(err, result)
-									{
-										if (err)
-										{
-											return console.log(err);
-										}										
-									});
-								});
-							}
-							else
-							{
-								// Create a relationship to the previous year
-								db.getIndexedNodes('years', 'year', years[year] - 1, function(err, result)
-								{
-									if (err)
-									{
-										res.send(err);
-										return console.log(err);
-									}
-
-									result.createRelationshipTo(node, 'follows', function(err, result)
-									{
-										if (err)
-										{
-											return console.log(err);
-										}
-									});
-								});
-							}							
-						});					
-					}
-				});
-			}
-			
-			// Add people to the database if they don't exist			
-			for (var person in people)
-			{
-				db.getIndexedNodes('people_guids', 'person_guid', people[person].guid, function(err, result)
-				{
-					if (err)
-					{
-						return console.log(err);
-					}
-					
-					if (result != null)
-					{
-						// Person has not been added
-						var node = db.createNode(people[person]);
-						// Save the person						
-						node.save(function callback(err, result) 
-						{
-							if (err)
-							{
-								return console.log(err);
-							}
-							
-							// Create the relationship from the person to the class
-							db.getIndexedNodes('years', 'year', people[person].year, function(err, result)
-							{
-								node.createRelationshipTo(result, 'class_of', function callback(err, result)
-								{
-									if (err)
-									{
-										return console.log(err);
-									}		
-								});
-							});
-							
-							// Create index
-							node.index('people_guids', 'person_guid', people[person].guid, function(err, result)
-							{
-								if (err)
-								{
-									return console.log(err);
-								}	
-							});							
-						});
-					}
-				});
-			}				
+					res.send('Added: \n' + JSON.stringify(years) + '\n\n' + JSON.stringify(people));					
+				});				
+			});						
 		});
 	}	
 	else
@@ -199,13 +98,6 @@ app.get('/user/:id', function (req, res)
 {
 	res.render('index.jade', { title: req.params.id});
 });
-
-// Save a user
-
-// Make 
-
-
-
 
 // Internal functions
 // Parse CSV
@@ -239,6 +131,172 @@ function parseCsv(s, sep)
 	return a;
 }
 
+// Adds all the class years to the database and creates their relationships
+function addAllyears(years, callback)
+{
+	// Counts how many years have been completed
+	var yearsCompleted = 0;
+	// Add class years to database		
+	var yearNodes = [];
+	for (var year in years)
+	{				
+		createYearNode({'year': years[year]}, function(err, result)
+		{
+			if (err)
+			{
+				return callback(err);
+			}			
+			yearNodes.push(result);				
+			
+			if (yearNodes.length == years.length)
+			{
+				yearNodes.sort(yearNodeCompare);
+				// All years have been added. Create relationships
+				for (i = 0; i < yearNodes.length; i++)
+				{
+					if (i == 0)
+					{
+						db.getNodeById(0, function(err, ref)
+						{
+							ref.createRelationshipTo(yearNodes[0], 'follows', {}, function(err)
+							{
+								if (err)
+								{									
+									return callback(err);
+								}
+								
+								yearsCompleted ++;
+								if (yearsCompleted == years.length)
+								{
+									return callback(null);
+								}
+								
+							});
+						});
+					}
+					
+					else
+					{
+						yearNodes[i-1].createRelationshipTo(yearNodes[i], 'follows', {}, function(err)
+						{
+							if (err)
+							{
+								return callback(err);
+							}
+							
+							yearsCompleted ++;
+							if (yearsCompleted == years.length)
+							{
+								return callback(null);
+							}
+						});
+					}
+				}
+			}			
+		});	
+	}
+}
+
+// Adds all the people to the database and creates their relationships to the classes
+function addAllPeople(people, callback)
+{
+	// Counts how many years have been completed
+	var peopleCompleted = 0;
+	
+	// Add people to database
+	for (var person in people)
+	{
+		createPersonNode(people[person], function(err, personNode, year)
+		{
+			if (err)
+			{
+				return callback(err);
+			}
+			
+			createPersonRel(personNode, year, function(err)
+			{
+				if (err)
+				{
+					return callback(err);
+				}
+				
+				peopleCompleted ++;
+				if (peopleCompleted == people.length)
+				{	
+					return callback(null);
+				}
+			});
+		});				
+	}
+}
+// Add year and index
+function createYearNode(year, callback)
+{
+	var node = db.createNode(year);
+	node.save(function (err)
+	{
+		if (err)
+		{
+			return callback(err);
+		}
+		
+		node.index('years', 'year', year.year, function(err)
+		{
+			if (err)
+			{
+				return callback(err);
+			}
+			callback(null, node);
+		});
+	});
+}
+
+// Add person and index
+function createPersonNode(person, callback)
+{
+	var node = db.createNode({'guid': person.guid, 'first': person.first, 'last': person.last, 'email': person.email});
+	node.save(function (err)
+	{
+		if (err)
+		{
+			return callback(err);
+		}
+		
+		node.index('persons', 'person', person.guid, function(err)
+		{
+			if (err)
+			{
+				return callback(err);
+			}
+			callback(null, node, person.year);
+		});
+	});
+}
+
+function createPersonRel(personNode, personYear, callback)
+{
+	db.getIndexedNode('years', 'year', personYear, function(err, node)
+	{
+		personNode.createRelationshipTo(node, 'graduated_in', {}, function(err)
+		{
+			if (err)
+			{
+				return callback(err);
+			}
+			
+			return callback(null);
+		});
+	});	
+}
+
+function yearNodeCompare(a,b) 
+{
+	if (a.data.year < b.data.year)
+		return -1;
+	if (a.data.year > b.data.year)
+		return 1;
+	return 0;
+}
 
 // Launch server
 app.listen(3000, function(){
