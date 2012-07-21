@@ -99,7 +99,7 @@ app.get('/user/:id', function (req, res)
 	res.render('index.jade', { title: req.params.id});
 });
 
-// Internal functions
+// Internal functions //
 // Parse CSV
 function parseCsv(s, sep)
 {	var universalNewline = /\r\n|\r|\n/g;
@@ -273,6 +273,7 @@ function createPersonNode(person, callback)
 	});
 }
 
+// Create relationship between a person and their graduating class
 function createPersonRel(personNode, personYear, callback)
 {
 	db.getIndexedNode('years', 'year', personYear, function(err, node)
@@ -289,6 +290,7 @@ function createPersonRel(personNode, personYear, callback)
 	});	
 }
 
+// Comparator for year node
 function yearNodeCompare(a,b) 
 {
 	if (a.data.year < b.data.year)
