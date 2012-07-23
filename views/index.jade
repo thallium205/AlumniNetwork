@@ -1,5 +1,48 @@
-extends layout
-
-block content
-  h1= title
-  p Welcome to #{title}
+<!DOCTYPE html>
+head
+	include ../includes/bootstrap
+body	
+	div.container
+		div.content
+			div.page-header
+				h1 Alumni Network
+			div.row
+				div.span12						
+					h2 Hi #{person.first} #{person.last}  Help us with your personal records.
+					form.well	
+						label Is this still your email?
+						input(type='text')(placeholder='chunkylover53@hellokitty.com') #{person.email}
+						label Cell phone?
+						input(type='text')(placeholder='702-555-1212')
+						label Where do you get your mail?
+						input(type='text')(placeholder='123 Fake Street')
+						label Where did you graduate from?
+						input(type='text')(placeholder='Bovine University')
+						label What did you study?
+						input(type='text')(placeholder='PhD Underwater Basket Weaving')
+					h2 Who do you stay in touch with?
+					- var check = "<input type=\"checkbox\">"
+					div.container					
+						table(cellpadding='0')(cellspacing='0')(border='0').table.table-striped.table-bordered#tblAlumni				
+							script
+								var school = !{JSON.stringify(school)};
+								var r = [];
+								r.push('<thead><tr><th>First Name</th><th>Last Name</th><th>Class</th><th>Friends</th></tr></thead>');
+								r.push('<tbody>');
+								for (var i = 0; i < school.length; i++)
+								{										
+									r.push('<tr><td>');
+									r.push(school[i].first);
+									r.push('</td><td>');
+									r.push(school[i].last);
+									r.push('</td><td>');
+									r.push(school[i].class);
+									r.push('</td><td>');
+									r.push("<input type=\"checkbox\">");
+									r.push('</td></tr>');
+								}
+								r.push('</tbody>');
+								$('#tblAlumni').html(r.join('')); 
+					button(type='submit').btn-primary Submit				
+		footer
+			p &copy; 2012 Your most favorite highschool ever

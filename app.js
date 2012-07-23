@@ -17,9 +17,84 @@ app.configure(function () {
   app.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 });
 
-// API
+// API //
 app.get('/', function(req, res){
-  res.render('index.jade', { title: 'Alumni Network' });
+  return res.send({'error': 'person not found'});
+});
+
+app.get('/:id', function(req, res)
+{	
+	var 
+	personResult = null,
+	allResult = null,
+	personQuery = [
+		'START person = node:guids(guid={guid})',
+		'MATCH person - [g:graduated_in] -> class',
+		'RETURN ID(person) AS id, person.guid AS guid, person.first AS first, person.last AS last, class.year AS year, person.email AS email'].join('\n'),	
+	allQuery = [
+		'START a = node(0)',
+		'MATCH a - [*1..] -> class <- [:graduated_in] - person',
+		'RETURN ID(person) AS id, person.first AS first, person.last AS last, class.year AS class'].join('\n'),
+	params = {
+		guid: req.params.id,
+	};
+	
+	// Get the person by their GUID
+	db.query(personQuery, params, function callback(err, result)
+	{
+		if (err)
+		{
+			console.log(err);
+			return res.send({'error': 'person not found'});
+		}
+		
+		personResult = result[0];
+		sendResult(personResult, allResult, res);
+	});
+	
+	// Get all the people
+	db.query(allQuery, null, function callback(err, result)
+	{
+		if (err)
+		{
+			console.log(err);
+			return res.send({'error': 'person not found'});
+		}
+		
+		allResult = result;
+		sendResult(personResult, allResult, res);
+	});
+	
+	
+	// Send the result to the client
+	function sendResult(personResult, allResult, res)
+	{
+		if (personResult != null && allResult != null)
+		{
+			// Before sending the result, we need to take out the person out of the school list since they can't be friends with themself
+			for (i = 0; i < allResult.length; i++)
+			{
+				if (allResult[i].id === personResult.id)
+				{
+					allResult.splice(i, 1);
+					break;
+				}
+			}
+			res.render('index.jade', {'person': personResult, 'school': allResult});
+		}
+	}
+});
+
+// Updates a person
+
+// Create friendship
+app.post('/friendship/', function(req, res)
+{
+	var guid = req.body.guid;
+	var id = req.body.id;
+	var friend = req.body.friend;
+	console.log('LOLOL: ' + guid + ' ' + id + ' ' + friend);
+	res.send({'status': 200});
 });
 
 // Load database
@@ -92,12 +167,6 @@ app.get('/load/:id', function(req, res)
 		res.render('index.jade', { title: 'Intruder!'});
 	}
 });	
-
-// Return a user
-app.get('/user/:id', function (req, res) 
-{
-	res.render('index.jade', { title: req.params.id});
-});
 
 // Internal functions //
 // Parse CSV
@@ -200,7 +269,7 @@ function addAllyears(years, callback)
 // Adds all the people to the database and creates their relationships to the classes
 function addAllPeople(people, callback)
 {
-	// Counts how many years have been completed
+	// Counts how many people have been completed
 	var peopleCompleted = 0;
 	
 	// Add people to database
@@ -223,6 +292,7 @@ function addAllPeople(people, callback)
 				peopleCompleted ++;
 				if (peopleCompleted == people.length)
 				{	
+					// Finished adding all the people
 					return callback(null);
 				}
 			});
@@ -246,6 +316,8 @@ function createYearNode(year, callback)
 			{
 				return callback(err);
 			}
+			
+			// Finished creating year node, return the created node
 			callback(null, node);
 		});
 	});
@@ -262,12 +334,14 @@ function createPersonNode(person, callback)
 			return callback(err);
 		}
 		
-		node.index('persons', 'person', person.guid, function(err)
+		node.index('guids', 'guid', person.guid, function(err)
 		{
 			if (err)
 			{
 				return callback(err);
 			}
+			
+			// Finsihed creating the person, return the node and the year that person belongs to
 			callback(null, node, person.year);
 		});
 	});
@@ -285,6 +359,7 @@ function createPersonRel(personNode, personYear, callback)
 				return callback(err);
 			}
 			
+			// Finished creating person relationship
 			return callback(null);
 		});
 	});	
