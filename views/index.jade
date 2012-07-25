@@ -5,44 +5,107 @@ body
 	div.container
 		div.content
 			div.page-header
-				h1 Alumni Network
+				h1 Hi #{person.first} #{person.last} - How are you, long time no see!
 			div.row
 				div.span12						
-					h2 Hi #{person.first} #{person.last}  Help us with your personal records.
+					h2 Can you believe TMS has surpassed 1,000 alumni this year? It's unbelievable and super exciting!
+					h2 TMS was so excited about this that they hired me, Mark Russell class of 2003, to be the Alumni Affairs Coordinator. 
+					h2 So, would you help us out, and fill out the data below?
 					form.well	
-						label Is this still your email?
-						input(type='text')(placeholder='chunkylover53@hellokitty.com') #{person.email}
-						label Cell phone?
-						input(type='text')(placeholder='702-555-1212')
-						label Where do you get your mail?
-						input(type='text')(placeholder='123 Fake Street')
-						label Where did you graduate from?
-						input(type='text')(placeholder='Bovine University')
-						label What did you study?
-						input(type='text')(placeholder='PhD Underwater Basket Weaving')
-					h2 Who do you stay in touch with?
-					- var check = "<input type=\"checkbox\">"
+						h3 Okay, just the basics:
+						label After you finish this form would like to see a cute picture of a :
+						div(data-toggle='buttons-radio').btn-group
+							button(class='btn')(type='button')#btnKitten Kitten
+							button(class='btn')(type='button')#btnPuppy Puppy
+						label What is your email? (We don't spam or tolerate those who do!)
+						input(type='text')#txtEmail
+						label Where should we send your next issue of Scholar Lane? (btw your parents don't want your copy)
+						input(type='text')#txtAddr
+						label Enter your phone number below if you would like to receive a txt alert about your next reunion details:
+						input(type='text')#txtPhone
+					h3 Who do you stay in touch with?
 					div.container					
 						table(cellpadding='0')(cellspacing='0')(border='0').table.table-striped.table-bordered#tblAlumni				
 							script
 								var school = !{JSON.stringify(school)};
 								var r = [];
-								r.push('<thead><tr><th>First Name</th><th>Last Name</th><th>Class</th><th>Friends</th></tr></thead>');
+								r.push('<thead><tr><th>Friends</th><th>First Name</th><th>Last Name</th><th>Graduating Class</th></tr></thead>');
 								r.push('<tbody>');
 								for (var i = 0; i < school.length; i++)
 								{										
 									r.push('<tr><td>');
-									r.push(school[i].first);
+									r.push("<button class=\"btn btnFriendCheck\" data-toggle=\"button\" id=" + school[i].id + " data-complete-text=\"Friend\">Not A Friend</button>");									
 									r.push('</td><td>');
-									r.push(school[i].last);
+									r.push(school[i].first);									
 									r.push('</td><td>');
-									r.push(school[i].class);
+									r.push(school[i].last);						
 									r.push('</td><td>');
-									r.push("<input type=\"checkbox\">");
+									r.push(school[i].class);									
 									r.push('</td></tr>');
 								}
 								r.push('</tbody>');
 								$('#tblAlumni').html(r.join('')); 
-					button(type='submit').btn-primary Submit				
+					button(id='btnSubmit')(data-loading-text='Saving...')(data-complete-text='Saved!').btn Submit
+					
+					script
+						var dto = {};
+						var isKitten = true;
+						dto.guid = !{JSON.stringify(person.guid)};
+						dto.rels = [];
+						$(".btnFriendCheck").click(function()
+						{
+							var uncheck = false;
+							for (var i = 0; i < dto.rels.length; i++)
+							{
+								if (dto.rels[i] === this.id)
+								{
+									dto.rels.splice(i, 1);
+									uncheck = true;
+								}
+							}
+							
+							if (uncheck === false)
+							{
+								dto.rels.push(this.id);								
+							}	
+							
+							$(this).button('complete');
+						});
+						
+						$("#btnSubmit").click(function() 
+						{	
+							$(this).button('loading');
+							dto.email = $('#txtEmail').val(),
+							dto.addr = $('#txtAddr').val(),
+							dto.phone = $('#txtPhone').val(),
+							
+							$.post('/submit/', dto, function(resp)
+							{
+								$("#btnSubmit").button('complete');
+								
+								// Redirect to cat or puppy
+								if (isKitten)
+								{
+									window.location.href = 'https://encrypted.google.com/search?q=kitten&hl=en&prmd=imvns&source=lnms&tbm=isch&sa=X&ei=W44PUMHMJ7D0iwKbpoHIBg&ved=0CGgQ_AUoAQ&biw=1745&bih=904';
+								}
+								else
+								{
+									window.location.href = 'https://encrypted.google.com/search?q=puppy&hl=en&prmd=imvnsr&source=lnms&tbm=isch&sa=X&ei=g44PULC5NKeujALkq4HoAg&ved=0CFQQ_AUoAQ&biw=1745&bih=904';
+								}							
+							});
+							
+							return false;
+						});
+						
+						$("#btnKitten").click(function()
+						{
+							isKitten = true;							
+						});
+						
+						$("#btnPuppy").click(function()
+						{
+							isKitten = false;
+						});						
+						
 		footer
 			p &copy; 2012 Your most favorite highschool ever

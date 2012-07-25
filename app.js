@@ -19,7 +19,7 @@ app.configure(function () {
 
 // API //
 app.get('/', function(req, res){
-  return res.send({'error': 'person not found'});
+  return res.send({'status': 'error', 'message': 'person not found'});
 });
 
 app.get('/:id', function(req, res)
@@ -30,7 +30,7 @@ app.get('/:id', function(req, res)
 	personQuery = [
 		'START person = node:guids(guid={guid})',
 		'MATCH person - [g:graduated_in] -> class',
-		'RETURN ID(person) AS id, person.guid AS guid, person.first AS first, person.last AS last, class.year AS year, person.email AS email'].join('\n'),	
+		'RETURN ID(person) AS id, person.guid AS guid, person.first AS first, person.last AS last, class.year AS year, person.email AS email, person.survey? AS survey'].join('\n'),	
 	allQuery = [
 		'START a = node(0)',
 		'MATCH a - [*1..] -> class <- [:graduated_in] - person',
@@ -39,28 +39,41 @@ app.get('/:id', function(req, res)
 		guid: req.params.id,
 	};
 	
+	// Add an entry so we can track if they clicked the link TODO	
+	db.getIndexedNode('guids', 'guid', req.params.id, function(err, node)
+	{
+		if (err)
+		{
+			console.log(err);
+			return res.send({'status': 'error', 'message': 'person not found'});		
+		}
+		node.data.clicked = new Date().toString();			
+		node.save();
+	});	
+	
+	
 	// Get the person by their GUID
 	db.query(personQuery, params, function callback(err, result)
 	{
 		if (err)
 		{
 			console.log(err);
-			return res.send({'error': 'person not found'});
+			return res.send({'status': 'error', 'message': 'person not found'});
 		}
-		
+
 		personResult = result[0];
 		sendResult(personResult, allResult, res);
 	});
-	
+
 	// Get all the people
 	db.query(allQuery, null, function callback(err, result)
 	{
 		if (err)
 		{
 			console.log(err);
-			return res.send({'error': 'person not found'});
+			return res.send({'status': 'error', 'message': 'person not found'});
 		}
-		
+
 		allResult = result;
 		sendResult(personResult, allResult, res);
 	});
@@ -71,30 +84,63 @@ app.get('/:id', function(req, res)
 	{
 		if (personResult != null && allResult != null)
 		{
-			// Before sending the result, we need to take out the person out of the school list since they can't be friends with themself
-			for (i = 0; i < allResult.length; i++)
+			if (personResult.survey === null)
 			{
-				if (allResult[i].id === personResult.id)
+				// They have not filled out the survey yet
+				// Before sending the result, we need to take out the person out of the school list since they can't be friends with themself
+				for (i = 0; i < allResult.length; i++)
 				{
-					allResult.splice(i, 1);
-					break;
+					if (allResult[i].id === personResult.id)
+					{
+						allResult.splice(i, 1);
+						break;
+					}
 				}
+				res.render('index.jade', {'person': personResult, 'school': allResult});
 			}
-			res.render('index.jade', {'person': personResult, 'school': allResult});
+			
+			else
+			{
+				// They have filled out the survey before.  Thank them.
+				res.send('Thanks for filling out the survey ' + personResult.first + '!');
+			}
 		}
 	}
 });
 
-// Updates a person
-
-// Create friendship
-app.post('/friendship/', function(req, res)
+app.post('/submit/', function(req, res)
 {
-	var guid = req.body.guid;
-	var id = req.body.id;
-	var friend = req.body.friend;
-	console.log('LOLOL: ' + guid + ' ' + id + ' ' + friend);
-	res.send({'status': 200});
+	// We want to check to make sure they haven't filled out the survey yet
+	db.getIndexedNode('guids', 'guid', req.body.guid, function(err, node)
+	{
+		if (err)
+		{
+			console.log(err);
+			return res.send({'status': 'error', 'message': 'person not found'});		
+		}
+		
+		if (typeof node.data.survey === 'undefined')
+		{
+			// They have not filled out the survey yet
+			updateFriendNode(req.body, function(err)
+			{
+				if (err)
+				{
+					console.log(err);
+					return res.send({'status': 'error', 'message': 'unable to update person'})					
+				}
+				
+				res.send({'status': 'success'});
+			});	
+		}
+		
+		else
+		{
+			// They have filled out the survey before.  Thank them.
+			console.log('The survey has already been filled out');
+			res.send({'status': 'finished', 'message': 'You can only submit once!  Thanks for already filling out the survey!'});
+		}		
+	});
 });
 
 // Load database
@@ -105,9 +151,8 @@ app.get('/load/:id', function(req, res)
 		fs.readFile('alumni.csv', 'utf8', function(err, data) 
 		{
 			if (err) 
-			{
-				res.render('index.jade', {title: 'Unable to open alumni.csv'});
-				return console.log(err);
+			{				
+				return res.send({'status': 'error', 'message': 'could not load alumni.csv'});
 			}	
 			
 			// Parse CSV		
@@ -157,14 +202,14 @@ app.get('/load/:id', function(req, res)
 						return console.log(err);
 					}
 					
-					res.send('Added: \n' + JSON.stringify(years) + '\n\n' + JSON.stringify(people));					
+					res.send({'status': 'success', 'message': 'Added: \n' + JSON.stringify(years) + '\n\n' + JSON.stringify(people)});					
 				});				
 			});						
 		});
 	}	
 	else
 	{
-		res.render('index.jade', { title: 'Intruder!'});
+		res.render({'status': 'error', 'message': 'invalid key'});
 	}
 });	
 
@@ -364,6 +409,69 @@ function createPersonRel(personNode, personYear, callback)
 		});
 	});	
 }
+
+function updateFriendNode(data, callback)
+{
+	var guid = data.guid, 
+		email = data.email,
+		addr = data.addr,
+		phone = data.phone,		
+		rels = data.rels;
+		
+	// Find the person by their guid
+	db.getIndexedNode('guids', 'guid', guid, function(err, node)
+	{
+		node.data.email = email;
+		node.data.addr = addr;
+		node.data.phone = phone;
+		node.data.survey = new Date().toString();
+		node.save(function(err)
+		{
+			if (err)
+			{
+				console.log(err);
+			}
+			
+			else
+			{
+				for (rel in rels)
+				{
+					createFriendRel(node, rels[rel], function(err)
+					{
+						if (err)
+						{
+							callback(err);
+						}					
+					});
+				}	
+				
+				return callback(null);
+			}
+		});
+	});
+}
+
+// Creates friend relationship between two people
+function createFriendRel(fromNode, toNodeId, callback)
+{
+	db.getNodeById(toNodeId, function(err, node)
+	{
+		if (err)
+		{
+			return callback(err);
+		}	
+	
+		fromNode.createRelationshipTo(node, 'friends_with', {}, function(err)
+		{
+			if (err)
+			{
+				return callback(err);
+			}
+			
+			return callback(null);
+		});
+	});
+}	
 
 // Comparator for year node
 function yearNodeCompare(a,b) 
